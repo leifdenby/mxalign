@@ -63,7 +63,7 @@ class Runner:
     def transform_datasets(self):
         config = self.config["transformations"]
         if config is None:
-            pass
+            return
         for transformation, config_trans in config.items():
             config_trans = config_trans.copy()
             # if no datasets specified, apply to all datasets
@@ -108,7 +108,7 @@ class Runner:
                     self.datasets.values(),
                     dim=xr.Variable("model", list(self.datasets.keys())),
                 )
-                save_dataset(method, name, ds, **config)
+                save_dataset(method, "merged", ds, **config)
             else:
                 raise ValueError("Unknown option for dataset saving.")
 
