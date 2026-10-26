@@ -9,6 +9,7 @@ and linear barycentric (Delaunay) interpolation reproduce it exactly.
 Trait / accessor-level tests live in test_align_space.py.
 """
 
+import cartopy.crs as ccrs
 import numpy as np
 import pytest
 import xarray as xr
@@ -97,6 +98,28 @@ class TestXarrayInterpolator:
         result = XarrayInterpolator(far_point)._interpolate(grid_latlon)
 
         assert np.isnan(result["temp"].isel(point_index=0).item())
+
+    def test_projected_source_keeps_target_point_coords(self, target_points):
+        # xc/yc source with an identity projection, so xc == lon and yc == lat
+        xc = yc = np.array([0.0, 1.0, 2.0])
+        source = xr.Dataset(
+            {"temp": (["yc", "xc"], yc[:, np.newaxis] + xc[np.newaxis, :])},
+            coords={"xc": xc, "yc": yc},
+            attrs={
+                "crs": ccrs.PlateCarree(),
+                "mlwp_space_trait": "grid",
+                "mlwp_time_trait": "forecast",
+            },
+        )
+        target = target_points.assign_coords(
+            point_index=[101, 102, 103], station=("point_index", ["a", "b", "c"])
+        )
+
+        result = XarrayInterpolator(target)._interpolate(source)
+
+        np.testing.assert_array_equal(result["point_index"].values, [101, 102, 103])
+        np.testing.assert_array_equal(result["station"].values, ["a", "b", "c"])
+        np.testing.assert_allclose(result["temp"].values, [0.0, 1.0, 2.0])
 
 
 # ---------------------------------------------------------------------------

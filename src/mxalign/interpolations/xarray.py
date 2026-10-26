@@ -45,9 +45,11 @@ class XarrayInterpolator(BaseInterpolator):
         y = xr.DataArray(xyz[:, 1], dims="point_index")
 
         ds_out = source_dataset.interp(xc=x, yc=y, **self.options)
+        # Assign the target DataArrays (not .values) so the point_index index and
+        # any other point coords (e.g. station IDs) are carried over
         ds_out = ds_out.assign_coords(
-            longitude=("point_index", self.target_dataset["longitude"].values),
-            latitude=("point_index", self.target_dataset["latitude"].values),
+            longitude=self.target_dataset["longitude"],
+            latitude=self.target_dataset["latitude"],
         )
         return ds_out
 
