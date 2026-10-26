@@ -2,6 +2,9 @@ import xarray as xr
 from mlwp_data_specs.specs.traits.spatial_coordinate import Space
 from ..utils.traits import update_space_trait
 
+# Attributes set by ds.mx.add_crs / add_grid_mapping that describe a source grid
+GRID_ONLY_ATTRS = ("crs", "grid_mapping")
+
 
 class BaseInterpolator:
     """Base class for all interpolators.
@@ -25,6 +28,11 @@ class BaseInterpolator:
     ) -> xr.Dataset | xr.DataArray:
         """Run interpolation and set the output space trait to ``target_space``."""
         ds_out = self._interpolate(source_dataset)
+        if self.target_space == Space.POINT:
+            # Grid-only attrs don't apply to points (and a cartopy CRS can't be saved)
+            ds_out.attrs = {
+                k: v for k, v in ds_out.attrs.items() if k not in GRID_ONLY_ATTRS
+            }
         return update_space_trait(ds_out, self.target_space)
 
     def _interpolate(

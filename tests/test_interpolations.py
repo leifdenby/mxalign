@@ -15,6 +15,7 @@ import pytest
 import xarray as xr
 
 from mxalign.interpolations.delaunay import DelaunayInterpolator
+from mxalign.interpolations.interpolate import interpolate
 from mxalign.interpolations.xarray import XarrayInterpolator
 
 
@@ -172,3 +173,39 @@ class TestDelaunayInterpolator:
         result = DelaunayInterpolator(far_point)._interpolate(grid_stacked)
 
         assert np.isnan(result["temp"].isel(point_index=0).item())
+
+
+# ---------------------------------------------------------------------------
+# Shared interpolator behaviour
+# ---------------------------------------------------------------------------
+
+GRID_ATTRS = {
+    "crs": ccrs.PlateCarree(),
+    "grid_mapping": {"nx": 3, "ny": 3},
+    "mlwp_space_trait": "grid",
+    "mlwp_time_trait": "forecast",
+    "mlwp_uncertainty_trait": "deterministic",
+}
+
+
+@pytest.mark.parametrize(
+    "interpolator, source",
+    [(XarrayInterpolator, "grid_latlon"), (DelaunayInterpolator, "grid_stacked")],
+)
+def test_point_output_drops_grid_attrs(
+    interpolator, source, target_points, tmp_path, request
+):
+    source = request.getfixturevalue(source).assign_attrs(GRID_ATTRS)
+
+    result = interpolator(target_points).interpolate(source)
+
+    assert "crs" not in result.attrs and "grid_mapping" not in result.attrs
+    assert result.attrs["mlwp_time_trait"] == "forecast"
+    result.to_netcdf(tmp_path / "points.nc")  # a cartopy CRS attr would fail here
+
+
+def test_interpolate_returns_same_container_type(grid_latlon, target_points):
+    out = interpolate(
+        {"a": grid_latlon.assign_attrs(GRID_ATTRS)}, target_points, "xarray"
+    )
+    assert list(out) == ["a"]
