@@ -1,5 +1,4 @@
 import xarray as xr
-from earthkit.data.utils.patterns import Pattern
 
 
 class DatasetPath:
@@ -44,16 +43,10 @@ class DatasetPath:
             self.day = int(days.isel(day=days.argmax())["day"].values)
 
     def substitute(self, path: str) -> str:
-        """Expand ``path`` pattern with ``{name}``, ``{year}``, ``{month}``, ``{day}``."""
-        pattern = Pattern(path)
-        path = pattern.substitute(
-            dict(name=self.name),
-            dict(year=self.year),
-            dict(month=self.month),
-            dict(day=self.day),
-            allow_extra=True,
+        """Expand ``path`` (:meth:`str.format` syntax) with ``{name}``, ``{year}``, ``{month}``, ``{day}``."""
+        return path.format(
+            name=self.name, year=self.year, month=self.month, day=self.day
         )
-        return path
 
 
 def save_dataset(method: str, name: str, ds: xr.Dataset, **kwargs) -> None:

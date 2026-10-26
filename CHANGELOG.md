@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Breaking:** file path patterns (`datasets.<name>.files` with a `dates:` section, and `alignment.save.path`) now use Python `str.format` syntax instead of earthkit-data patterns: `{reference_time:%Y%m%d%H}` instead of `{reference_time:strftime(%Y%m%d%H)}`, `{year:02d}` instead of `{year:int(%02d)}`. `{lead_time}` (integer hours) and `{valid_time}` are now supported in `files` patterns. `earthkit-data` is no longer a dependency. @michielv
 - Remove dataset loading and dataset validation and outsource it to [mlwp-data-loaders](https://github.com/mlwp-tools/mlwp-data-loaders) and [mlwp-data-specs](https://github.com/mlwp-tools/mlwp-data-specs) @michielv
 - Store dataset properties as netCDF-safe individual attributes while keeping read compatibility with legacy `attrs["properties"]` dict/JSON data. [\#21](https://github.com/mlwp-tools/mxalign/pull/21) @observingClouds
 - Added CI test workflow with first unit tests. [\#21](https://github.com/mlwp-tools/mxalign/pull/21) @observingClouds

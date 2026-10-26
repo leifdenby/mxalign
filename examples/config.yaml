@@ -8,7 +8,7 @@ dates:
 datasets:
   la-1024-ea-00:
     loader: mlwp_data_loaders.loaders.anemoi.anemoi_inference
-    files: /scratch/project_465000527/vandenbl/sg-la-comparison/inference-out/la-1024-01-ea-00/{reference_time:strftime(%Y%m%d%H)}.nc
+    files: /scratch/project_465000527/vandenbl/sg-la-comparison/inference-out/la-1024-01-ea-00/{reference_time:%Y%m%d%H}.nc
     #grid_mapping: CERRA
     variables: ["2t","10u","10v","msl"]
   cerra:
@@ -50,7 +50,7 @@ alignment:
   # save:
   #   method: to_netcdf
   #   datasets: all
-  #   path: "{name}_{year:int(%02d)}.nc"
+  #   path: "{name}_{year:02d}.nc"
 
 verification:
   reference: cerra
