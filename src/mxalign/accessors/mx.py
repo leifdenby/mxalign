@@ -15,14 +15,31 @@ from . import space as _space
 class MxAccessor:
     """``ds.mx`` accessor — space/time predicates and alignment operations.
 
-    Reads ``mlwp_space_trait`` and ``mlwp_time_trait`` from ``ds.attrs`` at
-    construction time; raises ``KeyError`` if either attribute is missing.
+    Reads ``mlwp_space_trait`` and ``mlwp_time_trait`` from ``ds.attrs`` on
+    every use (xarray caches the accessor per object, so reading them once
+    would go stale when attrs change). Raises ``KeyError`` when a trait is
+    needed but missing. Never modifies ``ds``; operations return new datasets.
     """
 
     def __init__(self, ds: xr.Dataset) -> None:
-        self._space = Space(ds.attrs[SPACE_TRAIT_ATTR])
-        self._time = Time(ds.attrs[TIME_TRAIT_ATTR])
         self._ds = ds
+
+    def _trait(self, attr: str) -> str:
+        try:
+            return self._ds.attrs[attr]
+        except KeyError:
+            raise KeyError(
+                f"Dataset has no '{attr}' attribute; load it with mlwp-data-loaders "
+                "or set it with mxalign.utils.traits."
+            ) from None
+
+    @property
+    def _space(self) -> Space:
+        return Space(self._trait(SPACE_TRAIT_ATTR))
+
+    @property
+    def _time(self) -> Time:
+        return Time(self._trait(TIME_TRAIT_ATTR))
 
     # --- Space predicates ---
 
@@ -74,32 +91,31 @@ class MxAccessor:
 
     def add_xy(self, crs: str | dict | ccrs.Projection | None = None) -> xr.Dataset:
         """Project ``longitude``/``latitude`` to ``xc``/``yc`` coordinates using the dataset CRS."""
-        if crs is not None:
-            self._ds = self.add_crs(crs)
+        ds = self.add_crs(crs) if crs is not None else self._ds
 
-        crs_obj = self._ds.attrs.get("crs", None)
+        crs_obj = ds.attrs.get("crs", None)
         if crs_obj is None:
             raise ValueError("No CRS provided and no CRS found in dataset attributes")
 
-        if {"longitude", "latitude"}.issubset(self._ds.dims):
+        if {"longitude", "latitude"}.issubset(ds.dims):
             raise ValueError(
                 "Cannot add x/y coordinates to a GRID dataset that has longitude/latitude dimensions"
             )
-        elif {"xc", "yc"}.issubset(self._ds.coords):
-            return self._ds
+        elif {"xc", "yc"}.issubset(ds.coords):
+            return ds
         else:
             xyz = crs_obj.transform_points(
-                x=self._ds["longitude"].values,
-                y=self._ds["latitude"].values,
+                x=ds["longitude"].values,
+                y=ds["latitude"].values,
                 src_crs=ccrs.PlateCarree(),
             )
 
         if self.is_grid():
-            return self._ds.assign_coords(
+            return ds.assign_coords(
                 xc=("grid_index", xyz[:, 0]), yc=("grid_index", xyz[:, 1])
             )
         elif self.is_point():
-            return self._ds.assign_coords(
+            return ds.assign_coords(
                 xc=("point_index", xyz[:, 0]), yc=("point_index", xyz[:, 1])
             )
         else:
@@ -140,14 +156,13 @@ class MxAccessor:
         if not self.is_stacked():
             return self._ds
         else:
-            if crs:
-                self._ds = self.add_crs(crs)
+            ds = self.add_crs(crs) if crs else self._ds
             kws_mindex: dict[str, int | float] = {}
             for key in ["nx", "ny", "lon_ll", "lat_ll", "dx", "dy"]:
                 value = kwargs.get(key)
                 if value is None:
                     try:
-                        value = self._ds.attrs["grid_mapping"][key]
+                        value = ds.attrs["grid_mapping"][key]
                     except KeyError:
                         raise KeyError(
                             f"Did not find a value for {key} in dataset attributes, please provide it as an argument"
@@ -159,36 +174,11 @@ class MxAccessor:
                 else:
                     kws_mindex[key] = float(value)
 
-            mindex = self._create_multiindex(**kws_mindex)
+            mindex = _create_multiindex(ds, **kws_mindex)
             mcoords = xr.Coordinates.from_pandas_multiindex(mindex, "grid_index")
-            ds_mindex = self._ds.assign_coords(mcoords)
+            ds_mindex = ds.assign_coords(mcoords)
             ds_mindex.attrs["grid_mapping"] = kws_mindex
             return ds_mindex.unstack()
-
-    def _create_multiindex(
-        self,
-        nx: int,
-        ny: int,
-        lon_ll: float,
-        lat_ll: float,
-        dx: float,
-        dy: float,
-        **kwargs,
-    ):
-        from pandas import MultiIndex
-
-        if self._ds.sizes["grid_index"] != nx * ny:
-            raise ValueError(
-                f"Size of grid_index ({self._ds.sizes['grid_index']}) does not match nx*ny ({nx * ny})"
-            )
-
-        crs = self._ds.attrs["crs"]
-        x_ll, y_ll = crs.transform_point(x=lon_ll, y=lat_ll, src_crs=ccrs.PlateCarree())
-
-        xc = x_ll + np.arange(nx) * dx
-        yc = y_ll + np.arange(ny) * dy
-
-        return MultiIndex.from_product([yc, xc], names=["yc", "xc"])
 
     # --- Time operations ---
 
@@ -261,3 +251,30 @@ class MxAccessor:
             elif ds2.mx.is_grid():
                 raise NotImplementedError("Point-to-grid alignment not implemented")
         raise ValueError("Datasets do not have compatible spatial properties")
+
+
+def _create_multiindex(
+    ds: xr.Dataset,
+    nx: int,
+    ny: int,
+    lon_ll: float,
+    lat_ll: float,
+    dx: float,
+    dy: float,
+    **kwargs,
+):
+    """Build the ``(yc, xc)`` MultiIndex for ``ds.grid_index`` from grid-mapping parameters."""
+    from pandas import MultiIndex
+
+    if ds.sizes["grid_index"] != nx * ny:
+        raise ValueError(
+            f"Size of grid_index ({ds.sizes['grid_index']}) does not match nx*ny ({nx * ny})"
+        )
+
+    crs = ds.attrs["crs"]
+    x_ll, y_ll = crs.transform_point(x=lon_ll, y=lat_ll, src_crs=ccrs.PlateCarree())
+
+    xc = x_ll + np.arange(nx) * dx
+    yc = y_ll + np.arange(ny) * dy
+
+    return MultiIndex.from_product([yc, xc], names=["yc", "xc"])
