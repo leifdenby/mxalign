@@ -21,6 +21,8 @@ dependencies = [
     "zarr<3.0",
     "bokeh>=3.8.2",
     "distributed>=2026.1.2",
+    "mlwp-data-specs",
+    "mlwp-data-loaders",
 ]
 
 [project.scripts]
@@ -29,6 +31,11 @@ mxalign = "mxalign.cli:main"
 [project.optional-dependencies]
 earthkit = [
     "earthkit-meteo>=0.6.1",
+]
+ifs = [
+    "cfgrib>=0.9.15.1",
+    "eccodes>=2.45.0",
+    "eccodeslib>=2.46.2.19",
 ]
 verification = [
     "xskillscore>=0.0.29",
@@ -47,8 +54,9 @@ testpaths = ["tests"]
 [dependency-groups]
 dev = [
     "ipykernel>=7.2.0",
-    "pytest>=8.0",
+    "pytest>=8.0.0",
 ]
 
 [tool.uv.sources]
-mlwp-data-loaders = { git = "https://github.com/mlwp-tools/mlwp-data-loaders", branch = "main" }
+mlwp-data-specs = { git = "https://github.com/mlwp-tools/mlwp-data-specs", rev = "059f382" }
+mlwp-data-loaders = { git = "https://github.com/mlwp-tools/mlwp-data-loaders" }
