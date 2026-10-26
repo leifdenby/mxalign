@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added optional `ifs` dependency group with `cfgrib`, `eccodes`, and `eccodeslib`. [\#21](https://github.com/mlwp-tools/mxalign/pull/21) @observingClouds
 - Added CI action for package build and upload to pypi.org on releases. [\#28](https://github.com/mlwp-tools/mxalign/pull/28) @leifdenby
 
+### Fixed
+- `ds.mx.add_xy(crs=...)` and `ds.mx.unstack(crs=...)` no longer replace the dataset held by the cached `ds.mx` accessor, so later `ds.mx` calls work on `ds` itself instead of a copy with the CRS attached. @michielv
+
 ## [0.1.0](https://github.com/mlwp-tools/mxalign/releases/tag/v0.1.0)
 
 First release of `mxalign`, an xarray-based package for alignment of meteorological datasets, with the following functionality and configuration:
