@@ -15,9 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added CI test workflow with first unit tests. [\#21](https://github.com/mlwp-tools/mxalign/pull/21) @observingClouds
 - Added optional `ifs` dependency group with `cfgrib`, `eccodes`, and `eccodeslib`. [\#21](https://github.com/mlwp-tools/mxalign/pull/21) @observingClouds
 - Added CI action for package build and upload to pypi.org on releases. [\#28](https://github.com/mlwp-tools/mxalign/pull/28) @leifdenby
+- `transform()` and `interpolate()` return the same container type they are given: a one-item list now stays a list instead of being unwrapped to a bare dataset, and a dict with a single dataset no longer raises `KeyError`. @michielv
 
 ### Fixed
 - `ds.mx.add_xy(crs=...)` and `ds.mx.unstack(crs=...)` no longer replace the dataset held by the cached `ds.mx` accessor, so later `ds.mx` calls work on `ds` itself instead of a copy with the CRS attached. @michielv
+- Interpolated point datasets no longer inherit the source grid's `crs` and `grid_mapping` attributes, so they can be saved with `to_netcdf`. @michielv
+- Saving aligned datasets with `alignment.save.datasets: merge` no longer fails with `UnboundLocalError`; the merged output fills `{name}` in the path with `merged`. @michielv
+- A pipeline config without a `transformations:` section no longer crashes. @michielv
+- `ds.mx.stack()` now stacks regular grids with `latitude`/`longitude` dimensions (it looked for `lat`/`lon`). @michielv
 
 ## [0.1.0](https://github.com/mlwp-tools/mxalign/releases/tag/v0.1.0)
 
