@@ -201,7 +201,7 @@ class MxAccessor:
     # --- Alignment ---
 
     def align_time_with(
-        self, ds2: xr.Dataset, lead_time: str | list | np.timedelta64 = "shortest"
+        self, ds2: xr.Dataset, lead_time: str | list | np.timedelta64 | None = None
     ) -> xr.Dataset:
         """Align this dataset's time axis to match ds2.
 
@@ -214,30 +214,22 @@ class MxAccessor:
         ----------
         ds2 : xr.Dataset
             The reference dataset to align to.
-        lead_time : str or timedelta or list
-            For Forecast→Observation: "shortest" | "longest" | specific value or list.
-            For Forecast→Forecast: "reference" | "intersection" | "union" (default "reference").
+        lead_time : str or timedelta or list, optional
+            For Forecast→Observation: "shortest" (default) | "longest" | specific value or list.
+            For Forecast→Forecast: "reference" (default) | "intersection" | "union".
             Ignored for observation→* cases.
         """
         if self.is_forecast() and ds2.mx.is_observation():
             return _time.align_forecast_to_observation(
-                self._ds, ds2, lead_time=lead_time
+                self._ds, ds2, lead_time="shortest" if lead_time is None else lead_time
             )
         elif self.is_observation() and ds2.mx.is_forecast():
             return _time.align_observation_to_forecast(self._ds, ds2)
         elif self.is_observation() and ds2.mx.is_observation():
             return _time.align_observation_to_observation(self._ds, ds2)
         elif self.is_forecast() and ds2.mx.is_forecast():
-            if isinstance(lead_time, str) and lead_time in (
-                "reference",
-                "intersection",
-                "union",
-            ):
-                ff_lead_time = lead_time
-            else:
-                ff_lead_time = "reference"
             return _time.align_forecast_to_forecast(
-                self._ds, ds2, lead_time=ff_lead_time
+                self._ds, ds2, lead_time="reference" if lead_time is None else lead_time
             )
         else:
             raise ValueError("Cannot align datasets with unknown time properties")

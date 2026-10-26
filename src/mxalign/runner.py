@@ -82,11 +82,8 @@ class Runner:
         config_align_space = config.get("space", None)
         config_align_save = config.get("save", None)
 
-        # align in time
-        if config_align_time:
-            self.align_time(config_align_time, reference_name=reference)
-        else:
-            print("Skipping temporal alignment")
+        # align in time (always; the time section only holds options)
+        self.align_time(config_align_time, reference_name=reference)
 
         # align in space
         if config_align_space:
@@ -159,8 +156,16 @@ class Runner:
             save_metrics(method, self.metrics, **config)
 
     def align_time(self, config, reference_name=None):
-        config = {k: v for k, v in config.items() if k != "method"}
-        self.datasets = align_time(self.datasets, reference=reference_name, **config)
+        config = dict(config or {})
+        lead_time = config.pop("lead_time", None)
+        if config:
+            raise ValueError(
+                f"Unknown option(s) in alignment.time: {', '.join(config)}. "
+                "Only lead_time is supported."
+            )
+        self.datasets = align_time(
+            self.datasets, reference=reference_name, lead_time=lead_time
+        )
 
     def align_space(self, reference, config):
         ds_ref = self.datasets[reference]

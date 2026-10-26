@@ -42,8 +42,9 @@ transformations:
 alignment:
   broadcast_nans: False
   reference: cerra
-  time:
-    return_as: forecast
+  # Time alignment always runs; options only apply to a forecast reference
+  # time:
+  #   lead_time: union  # reference (default) | intersection | union
   space:
     interpolation:
       method: delaunay

@@ -234,3 +234,35 @@ class TestPairwiseFallback:
 
         np.testing.assert_array_equal(out["o1"].valid_time.values, o2.valid_time.values)
         assert out["o1"].mx.is_observation()
+
+
+# ---------------------------------------------------------------------------
+# lead_time option
+# ---------------------------------------------------------------------------
+
+
+class TestLeadTimeOption:
+    def test_forecast_reference_forwards_lead_time(self):
+        f1 = fcst(["2020-01-02", "2020-01-03"], ["0h", "6h"])
+        f_ref = fcst(["2020-01-02", "2020-01-03"], ["6h", "12h"])
+
+        out = align_time({"f1": f1, "ref": f_ref}, reference="ref", lead_time="union")
+
+        leads = out["f1"].lead_time.values.astype("timedelta64[h]").astype("int64")
+        np.testing.assert_array_equal(leads, [0, 6, 12])
+
+    def test_forecast_reference_rejects_unknown_lead_time(self):
+        f1 = fcst(["2020-01-02"], ["0h"])
+        f_ref = fcst(["2020-01-02"], ["0h"])
+
+        with pytest.raises(ValueError, match="Unknown lead_time"):
+            align_time({"f1": f1, "ref": f_ref}, reference="ref", lead_time="shortest")
+
+    @pytest.mark.parametrize("with_forecast", [True, False])
+    def test_observation_reference_rejects_lead_time(self, with_forecast):
+        datasets = {"ref": obs(pd.date_range("2020-01-01", "2020-01-05", freq="6h"))}
+        if with_forecast:
+            datasets["f1"] = fcst(["2020-01-02"], ["0h", "6h"])
+
+        with pytest.raises(ValueError, match="only supported when the reference"):
+            align_time(datasets, reference="ref", lead_time="union")

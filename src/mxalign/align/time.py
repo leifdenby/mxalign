@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 def align_time(
     datasets: list[xr.Dataset] | dict[str, xr.Dataset],
     reference: str | xr.Dataset,
-    **kwargs,
+    lead_time: str | None = None,
 ):
     """Align all datasets temporally to a reference dataset.
 
@@ -37,13 +37,18 @@ def align_time(
 
     * **Pairwise** — for every other case (reference is a forecast, or all
       datasets are observations), each non-reference dataset is aligned via
-      ``ds.mx.align_time_with(ref_ds, **kwargs)``. The reference is fixed.
+      ``ds.mx.align_time_with(ref_ds, lead_time=lead_time)``. The reference is
+      fixed.
 
     Parameters
     ----------
     datasets : list or dict of xr.Dataset
     reference : str or xr.Dataset
         Key into *datasets* dict, or an xr.Dataset to align to.
+    lead_time : str, optional
+        Only allowed when the reference is a forecast: how the lead times of
+        the other forecasts are matched to the reference's — ``"reference"``
+        (default), ``"intersection"`` or ``"union"``.
     """
     if isinstance(datasets, dict):
         keys = list(datasets.keys())
@@ -54,6 +59,11 @@ def align_time(
         keys = None
         ref_ds = reference
 
+    if lead_time is not None and not ref_ds.mx.is_forecast():
+        raise ValueError(
+            f"lead_time={lead_time!r} is only supported when the reference is a forecast."
+        )
+
     forecasts = [ds for ds in ds_list if ds.mx.is_forecast()]
     use_global = ref_ds.mx.is_observation() and len(forecasts) > 0
 
@@ -61,7 +71,7 @@ def align_time(
         aligned = _align_time_global(ds_list, forecasts, ref_ds)
     else:
         aligned = [
-            ds if ds is ref_ds else ds.mx.align_time_with(ref_ds, **kwargs)
+            ds if ds is ref_ds else ds.mx.align_time_with(ref_ds, lead_time=lead_time)
             for ds in ds_list
         ]
 
