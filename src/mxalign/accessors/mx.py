@@ -141,8 +141,8 @@ class MxAccessor:
         else:
             if {"xc", "yc"}.issubset(self._ds.dims):
                 dims_to_stack = ["yc", "xc"]
-            elif {"lat", "lon"}.issubset(self._ds.dims):
-                dims_to_stack = ["lat", "lon"]
+            elif {"latitude", "longitude"}.issubset(self._ds.dims):
+                dims_to_stack = ["latitude", "longitude"]
             else:
                 raise ValueError("Could not find correct dimensions to stack")
         return self._ds.stack({"grid_index": dims_to_stack}).reset_index("grid_index")

@@ -53,3 +53,18 @@ class TestNoMutation:
         assert out["temp"].dims == ("yc", "xc")
         assert "crs" not in ds_grid.attrs
         assert ds_grid.mx.stack() is ds_grid
+
+
+class TestStack:
+    def test_stack_regular_latlon_grid(self):
+        ds = xr.Dataset(
+            {"temp": (["latitude", "longitude"], np.zeros((2, 3)))},
+            coords={"latitude": [0.0, 1.0], "longitude": [0.0, 1.0, 2.0]},
+            attrs={"mlwp_space_trait": "grid", "mlwp_time_trait": "forecast"},
+        )
+
+        out = ds.mx.stack()
+
+        assert out["temp"].dims == ("grid_index",)
+        assert out.sizes["grid_index"] == 6
+        assert out["latitude"].dims == out["longitude"].dims == ("grid_index",)
