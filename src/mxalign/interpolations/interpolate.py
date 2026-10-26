@@ -9,31 +9,15 @@ def interpolate(
     method: str,
     **kwargs,
 ) -> xr.Dataset | list[xr.Dataset] | dict[str, xr.Dataset]:
-    """Interpolate one or more source datasets to ``target_dataset`` using the named interpolator."""
+    """Interpolate one or more source datasets to ``target_dataset``; returns the same container type."""
     interp_cls = get_interpolation(method)
     interpolator = interp_cls(target_dataset, **kwargs)
 
     if isinstance(source_datasets, dict):
-        keys = list(source_datasets.keys())
-        datasets = list(source_datasets.values())
-    else:
-        if not isinstance(source_datasets, list):
-            datasets = [source_datasets]
-        else:
-            datasets = source_datasets
-        keys = None
-
-    if keys:
-        interpolated_datasets = dict()
-        for key, ds in zip(keys, datasets):
-            interpolated_datasets[key] = interpolator.interpolate(ds.copy())
-    else:
-        interpolated_datasets = []
-        for ds in datasets:
-            interpolated_datasets.append(interpolator.interpolate(ds.copy()))
-    interpolated_datasets = (
-        interpolated_datasets[0]
-        if len(interpolated_datasets) == 1
-        else interpolated_datasets
-    )
-    return interpolated_datasets
+        return {
+            key: interpolator.interpolate(ds.copy())
+            for key, ds in source_datasets.items()
+        }
+    if isinstance(source_datasets, list):
+        return [interpolator.interpolate(ds.copy()) for ds in source_datasets]
+    return interpolator.interpolate(source_datasets.copy())

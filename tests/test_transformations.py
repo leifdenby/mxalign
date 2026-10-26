@@ -27,3 +27,12 @@ def test_transform_applies_function_without_mutating_input():
 def test_unknown_transformation_raises():
     with pytest.raises(ValueError, match="Unknown transformation"):
         transform("does_not_exist", xr.Dataset())
+
+
+@pytest.mark.parametrize(
+    "container", [lambda ds: {"a": ds}, lambda ds: [ds]], ids=["dict", "list"]
+)
+def test_transform_returns_same_container_type(container):
+    datasets = container(xr.Dataset({"t2m": ("x", [1.0])}))
+    out = transform("_test_double", datasets)
+    assert type(out) is type(datasets)
