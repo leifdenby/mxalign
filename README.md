@@ -32,7 +32,7 @@ ds_fcst_aligned = mx.align_space(ds_fcst, reference=ds_obs, method="interpolatio
 
 # Align datasets temporally
 datasets = {"obs": ds_obs, "fcst": ds_fcst_aligned}
-aligned_datasets = mx.align_time(datasets, method="intersection")
+aligned_datasets = mx.align_time(datasets, reference="obs")
 ```
 
 For a more comprehensive interactive example, check out the [introductory notebook](./examples/introduction.ipynb).
@@ -61,8 +61,9 @@ transformations:
 alignment:
   # Define reference dataset and alignment methods (space, time, NaN broadcasting)
   reference: obs_data
-  time:
-    method: intersection
+  # Time alignment always runs; options only apply to a forecast reference
+  # time:
+  #   lead_time: union  # reference (default) | intersection | union
 
 verification:
   # Specify the reference dataset and the metrics to calculate
