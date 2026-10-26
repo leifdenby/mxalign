@@ -30,27 +30,25 @@ def align_forecast_to_observation(
     vt_vals = ds_stacked.valid_time.values
     lt_vals = ds_stacked.lead_time.values
 
-    if lead_time in ("shortest", "longest"):
+    if isinstance(lead_time, str) and lead_time in ("shortest", "longest"):
         df = pd.DataFrame({"vt": vt_vals, "lt": lt_vals})
         agg = "min" if lead_time == "shortest" else "max"
-        is_extreme = (df.groupby("vt")["lt"].transform(agg) == df["lt"]).values
-        # Among entries that match the extreme lead_time, keep first per valid_time
-        # (handles ties: same vt + same extreme lt appearing via different ref_times)
-        extreme_positions = np.where(is_extreme)[0]
-        _, first_in_group = np.unique(vt_vals[extreme_positions], return_index=True)
-        positions = extreme_positions[first_in_group]
-    elif isinstance(lead_time, (list, np.ndarray)):
-        lt_set = set(np.asarray(lead_time).tolist())
-        seen_vt = set()
-        positions = []
-        for i, (vt, lt) in enumerate(zip(vt_vals, lt_vals)):
-            if lt in lt_set and vt not in seen_vt:
-                positions.append(i)
-                seen_vt.add(vt)
-        positions = np.array(positions)
+        is_candidate = (df.groupby("vt")["lt"].transform(agg) == df["lt"]).values
     else:
-        # single lead_time value — filter directly
-        positions = np.where(lt_vals == lead_time)[0]
+        requested = _parse_lead_times(lead_time)
+        missing = np.setdiff1d(requested, lt_vals)
+        if missing.size:
+            raise ValueError(
+                f"lead_time(s) {pd.to_timedelta(missing).tolist()} not in forecast "
+                f"lead times {pd.to_timedelta(np.unique(lt_vals)).tolist()}"
+            )
+        is_candidate = np.isin(lt_vals, requested)
+
+    # Among candidate entries keep the first per valid_time (handles ties: the
+    # same valid_time reached via several reference_times)
+    candidate_positions = np.where(is_candidate)[0]
+    _, first_in_group = np.unique(vt_vals[candidate_positions], return_index=True)
+    positions = candidate_positions[first_in_group]
 
     ds_1d = ds_stacked.isel(time=positions)
     ds_1d = ds_1d.swap_dims({"time": "valid_time"})
@@ -62,6 +60,26 @@ def align_forecast_to_observation(
     ds_1d = ds_1d.reindex(valid_time=ds_obs.valid_time)
     ds_1d.attrs[TIME_TRAIT_ATTR] = Time.OBSERVATION.value
     return ds_1d
+
+
+def _parse_lead_times(lead_time) -> np.ndarray:
+    """Convert one or more lead times (timedelta-like or strings such as ``"6h"``) to ``timedelta64[ns]``."""
+    values = np.atleast_1d(np.asarray(lead_time, dtype=object))
+    # np.timedelta64 subclasses np.number, so exclude it explicitly
+    if any(
+        isinstance(v, (int, float, np.number)) and not isinstance(v, np.timedelta64)
+        for v in values
+    ):
+        raise ValueError(
+            f"lead_time {lead_time!r} needs a unit, e.g. '6h' or np.timedelta64(6, 'h')."
+        )
+    try:
+        return pd.to_timedelta(values).to_numpy().astype("timedelta64[ns]")
+    except ValueError:
+        raise ValueError(
+            f"Unknown lead_time option for F→O alignment: {lead_time!r}. Use "
+            "'shortest', 'longest', or one or more lead times such as '6h'."
+        ) from None
 
 
 def align_observation_to_forecast(

@@ -121,6 +121,38 @@ class TestForecastToObservation:
         assert result["temp"].sel(valid_time=T0 + 3 * H6).item() == 21.0  # (T0+12h, 6h)
         assert np.isnan(result["temp"].sel(valid_time=T0 + 4 * H6).item())
 
+    def test_lead_time_as_string(self, ds_fcst, ds_obs):
+        expected = ds_fcst.mx.align_time_with(ds_obs, lead_time=np.timedelta64(6, "h"))
+        result = ds_fcst.mx.align_time_with(ds_obs, lead_time="6h")
+        xr.testing.assert_identical(result, expected)
+
+    @pytest.mark.parametrize(
+        "lead_time",
+        [["6h", "12h"], np.array([6, 12], dtype="timedelta64[h]")],
+        ids=["list", "ndarray"],
+    )
+    def test_multiple_lead_times(self, ds_fcst, ds_obs, lead_time):
+        result = ds_fcst.mx.align_time_with(ds_obs, lead_time=lead_time)
+
+        assert np.isnan(result["temp"].sel(valid_time=T0).item())  # only 0h reaches T0
+        assert result["temp"].sel(valid_time=T0 + H6).item() == 1.0  # (T0, 6h)
+        # (T0, 12h) and (T0+6h, 6h) both match → earliest reference_time wins
+        assert result["temp"].sel(valid_time=T0 + 2 * H6).item() == 2.0
+
+    @pytest.mark.parametrize(
+        "lead_time, match",
+        [
+            ("shortst", "Unknown lead_time"),
+            ("union", "Unknown lead_time"),
+            (6, "needs a unit"),
+            ("7h", "not in forecast lead times"),
+            (["6h", "24h"], "not in forecast lead times"),
+        ],
+    )
+    def test_invalid_lead_time_raises(self, ds_fcst, ds_obs, lead_time, match):
+        with pytest.raises(ValueError, match=match):
+            ds_fcst.mx.align_time_with(ds_obs, lead_time=lead_time)
+
     def test_nan_filled_for_times_not_in_forecast(self, ds_fcst, ds_obs):
         result = ds_fcst.mx.align_time_with(ds_obs, lead_time="shortest")
         # T0-6h is in obs but never produced by any (ref_time, lead_time) pair
