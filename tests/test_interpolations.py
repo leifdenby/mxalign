@@ -10,10 +10,12 @@ Trait / accessor-level tests live in test_align_space.py.
 """
 
 import cartopy.crs as ccrs
+import dask
 import numpy as np
 import pytest
 import xarray as xr
 
+from mxalign.interpolations import delaunay
 from mxalign.interpolations.delaunay import DelaunayInterpolator
 from mxalign.interpolations.interpolate import interpolate
 from mxalign.interpolations.xarray import XarrayInterpolator
@@ -24,16 +26,28 @@ from mxalign.interpolations.xarray import XarrayInterpolator
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture
-def grid_latlon():
-    """3×3 regular lat/lon grid. temp[i, j] = lat[i] + lon[j]."""
-    lats = np.array([0.0, 1.0, 2.0])
-    lons = np.array([0.0, 1.0, 2.0])
+def _latlon_grid(lats, lons) -> xr.Dataset:
+    """Regular lat/lon grid with temp[i, j] = lat[i] + lon[j]."""
+    lats, lons = np.asarray(lats), np.asarray(lons)
     temp = lats[:, np.newaxis] + lons[np.newaxis, :]
     return xr.Dataset(
         {"temp": (["latitude", "longitude"], temp)},
         coords={"latitude": lats, "longitude": lons},
     )
+
+
+def _stacked_grid(lats, lons) -> xr.Dataset:
+    return (
+        _latlon_grid(lats, lons)
+        .stack(grid_index=["latitude", "longitude"])
+        .reset_index("grid_index")
+    )
+
+
+@pytest.fixture
+def grid_latlon():
+    """3×3 regular lat/lon grid. temp[i, j] = lat[i] + lon[j]."""
+    return _latlon_grid([0.0, 1.0, 2.0], [0.0, 1.0, 2.0])
 
 
 @pytest.fixture
@@ -156,12 +170,52 @@ class TestDelaunayInterpolator:
             result["longitude"].values, target_points["longitude"].values
         )
 
-    def test_weight_matrix_is_cached(self, grid_stacked, target_points):
-        interp = DelaunayInterpolator(target_points)
-        interp._interpolate(grid_stacked)
-        interp._interpolate(grid_stacked)
+    def test_weights_shared_across_instances(
+        self, grid_stacked, target_points, monkeypatch
+    ):
+        monkeypatch.setattr(delaunay, "_WEIGHTS_CACHE", {})
+        calls = []
+        build = delaunay._build_weight_matrix
+        monkeypatch.setattr(
+            delaunay,
+            "_build_weight_matrix",
+            lambda *args: calls.append(1) or build(*args),
+        )
 
-        assert len(interp._W_cache) == 1
+        # The Runner builds one interpolator per dataset
+        DelaunayInterpolator(target_points)._interpolate(grid_stacked)
+        DelaunayInterpolator(target_points)._interpolate(grid_stacked.copy())
+
+        assert len(calls) == 1
+
+    def test_cache_distinguishes_grids_with_same_extent(
+        self, grid_stacked, target_points, monkeypatch
+    ):
+        monkeypatch.setattr(delaunay, "_WEIGHTS_CACHE", {})
+        # Same shape, first latitude and last longitude, different interior
+        other = _stacked_grid(lats=[0.0, 1.0, 2.0], lons=[0.0, 1.5, 2.0])
+
+        DelaunayInterpolator(target_points)._interpolate(grid_stacked)
+        result = DelaunayInterpolator(target_points)._interpolate(other)
+
+        assert result["temp"].isel(point_index=1).item() == pytest.approx(1.0)
+
+    def test_rechunk_keeps_block_size_bounded(self, target_points):
+        grid = _stacked_grid(lats=np.linspace(0, 2, 20), lons=np.linspace(0, 2, 50))
+        n_steps, n_source = 64, grid.sizes["grid_index"]
+        source = (
+            grid.expand_dims(step=n_steps)
+            .copy()
+            .chunk({"step": n_steps, "grid_index": 100})
+        )
+
+        with dask.config.set({"array.chunk-size": "64KiB"}):
+            result = DelaunayInterpolator(target_points)._interpolate(source)
+
+        # Merging grid_index into one chunk must not grow blocks past the budget
+        rows_per_block = max(result["temp"].chunks[0])
+        assert rows_per_block * n_source * 8 <= 64 * 1024
+        np.testing.assert_allclose(result["temp"].isel(step=0).values, [0.0, 1.0, 2.0])
 
     def test_outside_convex_hull_is_nan(self, grid_stacked):
         far_point = xr.Dataset(

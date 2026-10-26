@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from functools import partial
 
@@ -15,6 +16,12 @@ from mlwp_data_specs.specs.traits.spatial_coordinate import Space
 
 logger = logging.getLogger(__name__)
 
+# Weight matrices keyed by a hash of the full source and target coordinates.
+# Module-level so they are shared across interpolator instances (the Runner
+# builds one per dataset); bounded so long sessions don't accumulate them.
+_WEIGHTS_CACHE: dict[tuple[str, str], csr_matrix] = {}
+_WEIGHTS_CACHE_SIZE = 8
+
 
 @register_interpolator
 class DelaunayInterpolator(BaseInterpolator):
@@ -25,26 +32,10 @@ class DelaunayInterpolator(BaseInterpolator):
     def __init__(self, target_dataset: xr.Dataset, **options) -> None:
         super().__init__(target_dataset, **options)
         method = self.options.get("method", "linear")
-        self._W_cache: dict = {}  # keyed by source grid hash
         if method != "linear":
             raise ValueError(
                 f"Method: {method}. Delaunay interpolation only supports linear interpolation"
             )
-
-    def _get_weights(
-        self, source_points: np.ndarray, target_points: np.ndarray
-    ) -> csr_matrix:
-        key = (
-            source_points.shape,
-            source_points[0, 0],
-            source_points[-1, 1],
-        )  # cheap fingerprint
-        if key not in self._W_cache:
-            triangulation = Delaunay(source_points)
-            self._W_cache[key] = _build_weight_matrix(
-                triangulation, source_points, target_points
-            )
-        return self._W_cache[key]
 
     def _interpolate(self, source_dataset: xr.Dataset) -> xr.Dataset:
         if "grid_index" not in source_dataset.dims:
@@ -70,7 +61,7 @@ class DelaunayInterpolator(BaseInterpolator):
         )
 
         # Compute triangulation and sparse weight matrix ONCE, shared across all variables
-        W = self._get_weights(source_points, target_points)
+        W = _get_weights(source_points, target_points)
 
         arrays_out = {}
         for var in source_dataset.data_vars:
@@ -89,6 +80,23 @@ class DelaunayInterpolator(BaseInterpolator):
         )
         ds_out.attrs.update(source_dataset.attrs)
         return ds_out
+
+
+def _fingerprint(points: np.ndarray) -> str:
+    """Hash of a full coordinate array (~20 ms for a 1M-point grid)."""
+    return hashlib.blake2b(np.ascontiguousarray(points), digest_size=16).hexdigest()
+
+
+def _get_weights(source_points: np.ndarray, target_points: np.ndarray) -> csr_matrix:
+    """Return the weight matrix for these source/target points, building it on a cache miss."""
+    key = (_fingerprint(source_points), _fingerprint(target_points))
+    if key not in _WEIGHTS_CACHE:
+        if len(_WEIGHTS_CACHE) >= _WEIGHTS_CACHE_SIZE:
+            _WEIGHTS_CACHE.pop(next(iter(_WEIGHTS_CACHE)))  # drop the oldest entry
+        _WEIGHTS_CACHE[key] = _build_weight_matrix(
+            Delaunay(source_points), source_points, target_points
+        )
+    return _WEIGHTS_CACHE[key]
 
 
 def _build_weight_matrix(
@@ -151,7 +159,9 @@ def interpolate_da(
 
     # Delaunay needs the full source axis per block (every target point pulls
     # from every source point via the sparse weight matrix). If grid_index is
-    # split across multiple chunks, rechunk to a single chunk before the matmul.
+    # split across multiple chunks, rechunk to a single chunk before the matmul,
+    # and let dask re-chunk the leading dims ("auto") so blocks stay near
+    # ``array.chunk-size`` instead of growing by the number of grid chunks.
     # ``unify_chunks`` then reconciles any leftover mismatch between the data
     # array and its coords (e.g. when ``chunks="auto"`` produced different
     # chunkings for reference_time on data vs. coord).
@@ -163,7 +173,7 @@ def interpolate_da(
                 "(required for the sparse weight matmul).",
                 len(grid_chunks),
             )
-            da = da.chunk({"grid_index": -1})
+            da = da.chunk({"grid_index": -1, **{d: "auto" for d in leading_dims}})
         da = da.unify_chunks()
 
     # Build the template
