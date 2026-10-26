@@ -2,8 +2,7 @@ import logging
 
 import xarray as xr
 
-from mlwp_data_specs.api import TIME_TRAIT_ATTR
-from mlwp_data_specs.specs.traits.time_coordinate import Time
+from mxalign.accessors.time import align_observation_to_forecast
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +98,8 @@ def _align_time_global(
 
     # xarray broadcasts r_star (reference_time) + l_star (lead_time) → 2D
     valid_time_2d = r_star + l_star
+    # Coordinate-only template of the common grid, used to reshape observations
+    grid = xr.Dataset(coords={"reference_time": r_star, "lead_time": l_star})
 
     aligned = []
     for ds in ds_list:
@@ -106,10 +107,7 @@ def _align_time_global(
             out = ds.reindex(reference_time=r_star, lead_time=l_star)
             out = out.assign_coords(valid_time=valid_time_2d)
         else:
-            out = ds.reindex(valid_time=valid_time_2d.values.ravel()).sel(
-                valid_time=valid_time_2d
-            )
-            out.attrs[TIME_TRAIT_ATTR] = Time.FORECAST.value
+            out = align_observation_to_forecast(ds, grid)
         aligned.append(out)
     return aligned
 

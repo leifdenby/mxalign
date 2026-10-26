@@ -110,6 +110,29 @@ class TestGlobalForecastsObservation:
 
 
 # ---------------------------------------------------------------------------
+# Overlapping runs: several (reference_time, lead_time) share a valid_time
+# ---------------------------------------------------------------------------
+
+
+class TestOverlappingValidTimes:
+    def test_observation_broadcast_when_runs_overlap(self):
+        # Runs 6h apart with leads up to 12h → each valid_time is hit up to 3 times
+        f1 = fcst(
+            ["2020-01-01 00:00", "2020-01-01 06:00", "2020-01-01 12:00"],
+            ["0h", "6h", "12h"],
+        )
+        ref = obs(pd.date_range("2020-01-01", "2020-01-02", freq="6h"))
+
+        out = align_time({"f1": f1, "ref": ref}, reference="ref")
+
+        # obs values are 0..4 at 00, 06, 12, 18, 24 UTC; cell (r, l) holds obs at r + l
+        np.testing.assert_array_equal(
+            out["ref"].temp.values,
+            [[0.0, 1.0, 2.0], [1.0, 2.0, 3.0], [2.0, 3.0, 4.0]],
+        )
+
+
+# ---------------------------------------------------------------------------
 # R* pruning by valid_time range
 # ---------------------------------------------------------------------------
 
