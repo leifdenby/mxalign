@@ -23,9 +23,15 @@ These traits are defined and validated by [`mlwp-data-specs`](https://github.com
 import mlwp_data_loaders as dl
 import mxalign as mx
 
-# Load datasets — traits are attached by the loader
-ds_obs = dl.load("observations_loader", files=["obs.nc"])
-ds_fcst = dl.load("anemoi_inference", files=["forecast.nc"])
+# Load datasets — traits are attached by the loader.
+# The `harp.obstable` loader reads SQLite observation databases (netCDF observation
+# files are no longer supported by a built-in loader).
+ds_obs = dl.load_and_validate_dataset(
+    ["obs.sqlite"], loader="mlwp_data_loaders.loaders.harp.obstable"
+)
+ds_fcst = dl.load_and_validate_dataset(
+    ["forecast.nc"], loader="mlwp_data_loaders.loaders.anemoi.anemoi_inference"
+)
 
 # Align the forecast spatially to match the observation reference
 ds_fcst_aligned = mx.align_space(ds_fcst, reference=ds_obs, method="interpolation")
@@ -49,10 +55,10 @@ The configuration file is divided into several main sections:
 datasets:
   # Define datasets to load, specifying the loader, files, and variables
   obs_data:
-    loader: observations_loader
-    files: ["obs.nc"]
+    loader: mlwp_data_loaders.loaders.harp.obstable
+    files: ["obs.sqlite"]
   fcst_data:
-    loader: anemoi_inference
+    loader: mlwp_data_loaders.loaders.anemoi.anemoi_inference
     files: ["forecast.nc"]
 
 transformations:
